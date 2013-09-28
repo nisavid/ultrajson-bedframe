@@ -734,7 +734,7 @@ void encode(JSOBJ obj, JSONObjectEncoder *enc, const char *name, size_t cbName)
           {
             Buffer_AppendCharUnchecked (enc, ',');
 #ifndef JSON_NO_EXTRA_WHITESPACE
-            Buffer_AppendCharUnchecked (buffer, ' ');
+            Buffer_AppendCharUnchecked (enc, ' ');
 #endif
           }
 
