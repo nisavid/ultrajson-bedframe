@@ -55,7 +55,7 @@ try:
 finally:
     f.close()    
     
-setup (name = 'ujson',
+setup (name = 'ujson-bedframe',
        version = get_version(),
        description = "Ultra fast JSON encoder and decoder for Python",
        long_description = README,
