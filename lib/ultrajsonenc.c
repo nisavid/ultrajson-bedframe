@@ -665,6 +665,7 @@ void encode(JSOBJ obj, JSONObjectEncoder *enc, const char *name, size_t cbName)
   JSOBJ iterObj;
   size_t szlen;
   JSONTypeContext tc;
+  unsigned char usingDefaultPrimPyfunc = 0;
 
   if (enc->level > enc->recursionMax)
   {
@@ -712,6 +713,8 @@ void encode(JSOBJ obj, JSONObjectEncoder *enc, const char *name, size_t cbName)
 #endif
     }
 
+
+ENCODE:
     enc->beginTypeContext(obj, &tc);
 
     switch (tc.type)
@@ -865,6 +868,30 @@ void encode(JSOBJ obj, JSONObjectEncoder *enc, const char *name, size_t cbName)
       Buffer_AppendCharUnchecked (enc, '\"');
       break;
     }
+
+  case JT_NOT_SERIALIZABLE:
+  {
+    if (usingDefaultPrimPyfunc)
+    {
+      enc->pyerrInvalidDefaultPrimPyfuncResultType(enc->defaultPrimPyfunc, obj);
+      enc->endTypeContext(obj, &tc);
+      return;
+    }
+    else
+      if (enc->defaultPrimPyfunc)
+      {
+        enc->clearPyexc();
+
+        usingDefaultPrimPyfunc = 1;
+        obj = enc->getDefaultPrim(obj, &tc, enc->defaultPrimPyfunc, &szlen);
+        goto ENCODE;
+      }
+      else
+      {
+        enc->endTypeContext(obj, &tc);
+        return;
+      }
+  }
   }
 
   enc->endTypeContext(obj, &tc);

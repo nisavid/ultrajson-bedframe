@@ -154,6 +154,7 @@ enum JSTYPES
   JT_UTF8,        //(char 8-bit)
   JT_ARRAY,       // Array structure
   JT_OBJECT,    // Key/Value structure
+  JT_NOT_SERIALIZABLE,
   JT_INVALID,    // Internal, do not return nor expect
 };
 
@@ -179,6 +180,9 @@ typedef void *(*JSPFN_REALLOC)(void *base, size_t size);
 
 typedef struct __JSONObjectEncoder
 {
+  void (*clearPyexc)();
+  void (*pyerrInvalidDefaultPrimPyfuncResultType)(const void *defaultPrimPyfunc, JSOBJ result);
+
   void (*beginTypeContext)(JSOBJ obj, JSONTypeContext *tc);
   void (*endTypeContext)(JSOBJ obj, JSONTypeContext *tc);
   const char *(*getStringValue)(JSOBJ obj, JSONTypeContext *tc, size_t *_outLen);
@@ -222,6 +226,8 @@ typedef struct __JSONObjectEncoder
   */
   void (*releaseObject)(JSOBJ obj);
 
+  char *(*getDefaultPrim)(JSOBJ obj, JSONTypeContext *tc, const void *defaultPrimPyfunc, size_t *outLen);
+
   /* Library functions
   Set to NULL to use STDLIB malloc,realloc,free */
   JSPFN_MALLOC malloc;
@@ -243,6 +249,8 @@ typedef struct __JSONObjectEncoder
   /*
   If true, '<', '>', and '&' characters will be encoded as \u003c, \u003e, and \u0026, respectively. If false, no special encoding will be used. */
   int encodeHTMLChars;
+
+  void *defaultPrimPyfunc;
 
   /*
   Set to an error message if error occured */

@@ -93,6 +93,55 @@ void initObjToJSON(void)
     PyErr_Clear();
 }
 
+void clearPyexc()
+{
+  PyErr_Clear();
+}
+
+void PyErr_DefaultPrimPyfuncExc(PyObject *pyfunc)
+{
+  char* messageFormatArg1 = "";
+  char* messageFormatArg2 = "";
+  char* messageFormatArg3 = "";
+  char* messageFormatArg4 = "";
+
+  PyObject *pyexcType, *pyexc, *pyexcTb, *pyexcStr;
+  PyErr_Fetch(&pyexcType, &pyexc, &pyexcTb);
+  PyErr_NormalizeException(&pyexcType, &pyexc, &pyexcTb);
+  Py_XDECREF(pyexcType);
+  Py_XDECREF(pyexcTb);
+  if (pyexc)
+  {
+    messageFormatArg1 = ": ";
+    PyObject *pyexcClass = PyObject_GetAttrString(pyexc, "__class__");
+    PyObject *pyexcClassName = PyObject_GetAttrString(pyexcClass, "__name__");
+    Py_DECREF(pyexcClass);
+    messageFormatArg2 = PyString_AS_STRING(pyexcClassName);
+    Py_DECREF(pyexcClassName);
+
+    pyexcStr = PyObject_Str(pyexc);
+    Py_DECREF(pyexc);
+    messageFormatArg4 = PyString_AS_STRING(pyexcStr);
+    if (strlen(messageFormatArg4) > 0)
+      messageFormatArg3 = ": ";
+  }
+
+  PyObject *pyfuncRepr = PyObject_Repr(pyfunc);
+  PyErr_Format(PyExc_RuntimeError, "error calling default converter function %s%s%s%s%s", PyString_AS_STRING(pyfuncRepr), messageFormatArg1, messageFormatArg2, messageFormatArg3, messageFormatArg4);
+  Py_DECREF(pyfuncRepr);
+}
+
+void PyErr_InvalidDefaultPrimPyfuncResultType(const void *pyfunc, const void *result)
+{
+  PyObject *resultClass = PyObject_GetAttrString((PyObject *)result, "__class__");
+  PyObject *resultClassName = PyObject_GetAttrString(resultClass, "__name__");
+  Py_DECREF(resultClass);
+  PyObject *pyfuncRepr = PyObject_Repr((PyObject *)pyfunc);
+  PyErr_Format(PyExc_TypeError, "invalid result type %s from default converter function %s; expecting a JSON-serializable object", PyString_AS_STRING(resultClassName), PyString_AS_STRING(pyfuncRepr));
+  Py_DECREF(resultClassName);
+  Py_DECREF(pyfuncRepr);
+}
+
 static void *PyIntToINT32(JSOBJ _obj, JSONTypeContext *tc, void *outValue, size_t *_outLen)
 {
   PyObject *obj = (PyObject *) _obj;
@@ -497,9 +546,13 @@ ISITERABLE:
     return;
   }
 
+  PRINTMARK();
   PyErr_SetString(PyExc_TypeError, "object is not JSON serializable");
+  tc->type = JT_NOT_SERIALIZABLE;
+  return;
 
 INVALID:
+  PRINTMARK();
   tc->type = JT_INVALID;
   PyObject_Free(tc->prv);
   tc->prv = NULL;
@@ -570,9 +623,29 @@ char *Object_iterGetName(JSOBJ obj, JSONTypeContext *tc, size_t *outLen)
   return GET_TC(tc)->iterGetName(obj, tc, outLen);
 }
 
+char *Object_getDefaultPrim(JSOBJ obj, JSONTypeContext *tc, const void *defaultPrimPyfunc, size_t *outLen)
+{
+  PyObject *defaultPrimPyfunc_ = (PyObject *)defaultPrimPyfunc;
+  PyObject *defaultPrimPyargs = PyTuple_Pack(1, (PyObject *)obj);
+  PyObject *prim;
+  char *value = NULL;
+
+  prim = PyObject_CallObject(defaultPrimPyfunc_, defaultPrimPyargs);
+  Py_DECREF(defaultPrimPyargs);
+
+  if (!prim)
+  {
+    if (PyErr_Occurred())
+      PyErr_DefaultPrimPyfuncExc(defaultPrimPyfunc_);
+    return NULL;
+  }
+
+  return prim;
+}
+
 PyObject* objToJSON(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-  static char *kwlist[] = { "obj", "ensure_ascii", "double_precision", "encode_html_chars", NULL};
+  static char *kwlist[] = { "obj", "ensure_ascii", "double_precision", "encode_html_chars", "default", NULL};
 
   char buffer[65536];
   char *ret;
@@ -581,9 +654,12 @@ PyObject* objToJSON(PyObject* self, PyObject *args, PyObject *kwargs)
   PyObject *oensureAscii = NULL;
   int idoublePrecision = 10; // default double precision setting
   PyObject *oencodeHTMLChars = NULL;
+  PyObject *defaultPrimPyfunc = NULL;
 
   JSONObjectEncoder encoder =
   {
+    clearPyexc,
+    PyErr_InvalidDefaultPrimPyfuncResultType,
     Object_beginTypeContext,
     Object_endTypeContext,
     Object_getStringValue,
@@ -596,6 +672,7 @@ PyObject* objToJSON(PyObject* self, PyObject *args, PyObject *kwargs)
     Object_iterGetValue,
     Object_iterGetName,
     Object_releaseObject,
+    Object_getDefaultPrim,
     PyObject_Malloc,
     PyObject_Realloc,
     PyObject_Free,
@@ -603,12 +680,13 @@ PyObject* objToJSON(PyObject* self, PyObject *args, PyObject *kwargs)
     idoublePrecision,
     1, //forceAscii
     0, //encodeHTMLChars
+    NULL,
   };
 
 
   PRINTMARK();
 
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|OiO", kwlist, &oinput, &oensureAscii, &idoublePrecision, &oencodeHTMLChars))
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|OiOO", kwlist, &oinput, &oensureAscii, &idoublePrecision, &oencodeHTMLChars, &defaultPrimPyfunc))
   {
     return NULL;
   }
@@ -624,6 +702,8 @@ PyObject* objToJSON(PyObject* self, PyObject *args, PyObject *kwargs)
   }
 
   encoder.doublePrecision = idoublePrecision;
+
+  encoder.defaultPrimPyfunc = defaultPrimPyfunc;
 
   PRINTMARK();
   ret = JSON_EncodeObject (oinput, &encoder, buffer, sizeof (buffer));
