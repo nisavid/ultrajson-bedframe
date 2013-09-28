@@ -238,6 +238,8 @@ typedef struct __JSONObjectEncoder
   Configuration for max recursion, set to 0 to use default (see JSON_MAX_RECURSION_DEPTH)*/
   int recursionMax;
 
+  int allowNan;
+
   /*
   Configuration for max decimals of double floating poiunt numbers to encode (0-9) */
   int doublePrecision;

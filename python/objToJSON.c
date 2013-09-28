@@ -645,13 +645,14 @@ char *Object_getDefaultPrim(JSOBJ obj, JSONTypeContext *tc, const void *defaultP
 
 PyObject* objToJSON(PyObject* self, PyObject *args, PyObject *kwargs)
 {
-  static char *kwlist[] = { "obj", "ensure_ascii", "double_precision", "encode_html_chars", "default", NULL};
+  static char *kwlist[] = { "obj", "ensure_ascii", "allow_nan", "double_precision", "encode_html_chars", "default", NULL};
 
   char buffer[65536];
   char *ret;
   PyObject *newobj;
   PyObject *oinput = NULL;
   PyObject *oensureAscii = NULL;
+  PyObject *oallowNan = NULL;
   int idoublePrecision = 10; // default double precision setting
   PyObject *oencodeHTMLChars = NULL;
   PyObject *defaultPrimPyfunc = NULL;
@@ -677,6 +678,7 @@ PyObject* objToJSON(PyObject* self, PyObject *args, PyObject *kwargs)
     PyObject_Realloc,
     PyObject_Free,
     -1, //recursionMax
+    1, //allowNan
     idoublePrecision,
     1, //forceAscii
     0, //encodeHTMLChars
@@ -686,7 +688,7 @@ PyObject* objToJSON(PyObject* self, PyObject *args, PyObject *kwargs)
 
   PRINTMARK();
 
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|OiOO", kwlist, &oinput, &oensureAscii, &idoublePrecision, &oencodeHTMLChars, &defaultPrimPyfunc))
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|OOiOO", kwlist, &oinput, &oensureAscii, &oallowNan, &idoublePrecision, &oencodeHTMLChars, &defaultPrimPyfunc))
   {
     return NULL;
   }
@@ -694,6 +696,11 @@ PyObject* objToJSON(PyObject* self, PyObject *args, PyObject *kwargs)
   if (oensureAscii != NULL && !PyObject_IsTrue(oensureAscii))
   {
     encoder.forceASCII = 0;
+  }
+
+  if (oallowNan != NULL && !PyObject_IsTrue(oallowNan))
+  {
+    encoder.allowNan = 0;
   }
 
   if (oencodeHTMLChars != NULL && PyObject_IsTrue(oencodeHTMLChars))

@@ -523,16 +523,63 @@ int Buffer_AppendDoubleUnchecked(JSOBJ obj, JSONObjectEncoder *enc, double value
   int neg;
   double pow10;
 
-  if (value == HUGE_VAL || value == -HUGE_VAL)
+  if (value == HUGE_VAL)
   {
-    SetError (obj, enc, "Invalid Inf value when encoding double");
-    return FALSE;
+    if (enc->allowNan)
+    {
+      Buffer_AppendCharUnchecked (enc, 'I');
+      Buffer_AppendCharUnchecked (enc, 'n');
+      Buffer_AppendCharUnchecked (enc, 'f');
+      Buffer_AppendCharUnchecked (enc, 'i');
+      Buffer_AppendCharUnchecked (enc, 'n');
+      Buffer_AppendCharUnchecked (enc, 'i');
+      Buffer_AppendCharUnchecked (enc, 't');
+      Buffer_AppendCharUnchecked (enc, 'y');
+      return TRUE;
+    }
+    else
+    {
+      SetError (obj, enc, "Invalid value inf when encoding double");
+      return FALSE;
+    }
   }
-
+  else
+  if (value == -HUGE_VAL)
+  {
+    if (enc->allowNan)
+    {
+      Buffer_AppendCharUnchecked (enc, '-');
+      Buffer_AppendCharUnchecked (enc, 'I');
+      Buffer_AppendCharUnchecked (enc, 'n');
+      Buffer_AppendCharUnchecked (enc, 'f');
+      Buffer_AppendCharUnchecked (enc, 'i');
+      Buffer_AppendCharUnchecked (enc, 'n');
+      Buffer_AppendCharUnchecked (enc, 'i');
+      Buffer_AppendCharUnchecked (enc, 't');
+      Buffer_AppendCharUnchecked (enc, 'y');
+      return TRUE;
+    }
+    else
+    {
+      SetError (obj, enc, "Invalid value -inf when encoding double");
+      return FALSE;
+    }
+  }
+  else
   if (!(value == value))
   {
-    SetError (obj, enc, "Invalid Nan value when encoding double");
-    return FALSE;
+    if (enc->allowNan)
+    {
+      Buffer_AppendCharUnchecked (enc, 'N');
+      Buffer_AppendCharUnchecked (enc, 'a');
+      Buffer_AppendCharUnchecked (enc, 'N');
+      return TRUE;
+    }
+    else
+    {
+      SetError (obj, enc, "Invalid value nan when encoding double");
+      return FALSE;
+    }
   }
 
   /* we'll work in positive values and deal with the
