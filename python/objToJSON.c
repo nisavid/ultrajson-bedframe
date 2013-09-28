@@ -37,7 +37,6 @@ http://www.opensource.apple.com/source/tcl/tcl-14/tcl/license.terms
 
 #include "py_defines.h"
 #include <stdio.h>
-#include <datetime.h>
 #include <ultrajson.h>
 
 #define EPOCH_ORD 719163
@@ -92,8 +91,6 @@ void initObjToJSON(void)
   }
   else
     PyErr_Clear();
-
-  PyDateTime_IMPORT;
 }
 
 static void *PyIntToINT32(JSOBJ _obj, JSONTypeContext *tc, void *outValue, size_t *_outLen)
@@ -139,48 +136,6 @@ static void *PyUnicodeToUTF8(JSOBJ _obj, JSONTypeContext *tc, void *outValue, si
 
   *_outLen = PyString_GET_SIZE(newObj);
   return PyString_AS_STRING(newObj);
-}
-
-static void *PyDateTimeToINT64(JSOBJ _obj, JSONTypeContext *tc, void *outValue, size_t *_outLen)
-{
-  PyObject *obj = (PyObject *) _obj;
-  PyObject *date, *ord;
-  int y, m, d, h, mn, s, days;
-
-  y = PyDateTime_GET_YEAR(obj);
-  m = PyDateTime_GET_MONTH(obj);
-  d = PyDateTime_GET_DAY(obj);
-  h = PyDateTime_DATE_GET_HOUR(obj);
-  mn = PyDateTime_DATE_GET_MINUTE(obj);
-  s = PyDateTime_DATE_GET_SECOND(obj);
-
-  date = PyDate_FromDate(y, m, 1);
-  ord = PyObject_CallMethod(date, "toordinal", NULL);
-  days = PyInt_AS_LONG(ord) - EPOCH_ORD + d - 1;
-  Py_DECREF(date);
-  Py_DECREF(ord);
-  *( (JSINT64 *) outValue) = (((JSINT64) ((days * 24 + h) * 60 + mn)) * 60 + s);
-  return NULL;
-}
-
-static void *PyDateToINT64(JSOBJ _obj, JSONTypeContext *tc, void *outValue, size_t *_outLen)
-{
-  PyObject *obj = (PyObject *) _obj;
-  PyObject *date, *ord;
-  int y, m, d, days;
-
-  y = PyDateTime_GET_YEAR(obj);
-  m = PyDateTime_GET_MONTH(obj);
-  d = PyDateTime_GET_DAY(obj);
-
-  date = PyDate_FromDate(y, m, 1);
-  ord = PyObject_CallMethod(date, "toordinal", NULL);
-  days = PyInt_AS_LONG(ord) - EPOCH_ORD + d - 1;
-  Py_DECREF(date);
-  Py_DECREF(ord);
-  *( (JSINT64 *) outValue) = ((JSINT64) days * 86400);
-
-  return NULL;
 }
 
 //=============================================================================
@@ -279,127 +234,6 @@ char *Iter_iterGetName(JSOBJ obj, JSONTypeContext *tc, size_t *outLen)
 {
   return NULL;
 }
-
-//=============================================================================
-// Dir iteration functions
-// itemName ref is borrowed from PyObject_Dir (attrList). No refcount
-// itemValue ref is from PyObject_GetAttr. Ref counted
-//=============================================================================
-void Dir_iterBegin(JSOBJ obj, JSONTypeContext *tc)
-{
-  GET_TC(tc)->attrList = PyObject_Dir(obj);
-  GET_TC(tc)->index = 0;
-  GET_TC(tc)->size = PyList_GET_SIZE(GET_TC(tc)->attrList);
-  PRINTMARK();
-}
-
-void Dir_iterEnd(JSOBJ obj, JSONTypeContext *tc)
-{
-  if (GET_TC(tc)->itemValue)
-  {
-    Py_DECREF(GET_TC(tc)->itemValue);
-    GET_TC(tc)->itemValue = NULL;
-  }
-
-  if (GET_TC(tc)->itemName)
-  {
-    Py_DECREF(GET_TC(tc)->itemName);
-    GET_TC(tc)->itemName = NULL;
-  }
-
-  Py_DECREF( (PyObject *) GET_TC(tc)->attrList);
-  PRINTMARK();
-}
-
-int Dir_iterNext(JSOBJ _obj, JSONTypeContext *tc)
-{
-  PyObject *obj = (PyObject *) _obj;
-  PyObject *itemValue = GET_TC(tc)->itemValue;
-  PyObject *itemName = GET_TC(tc)->itemName;
-  PyObject* attr;
-  PyObject* attrName;
-  char* attrStr;
-
-  if (itemValue)
-  {
-    Py_DECREF(GET_TC(tc)->itemValue);
-    GET_TC(tc)->itemValue = itemValue = NULL;
-  }
-
-  if (itemName)
-  {
-    Py_DECREF(GET_TC(tc)->itemName);
-    GET_TC(tc)->itemName = itemName = NULL;
-  }
-
-  for (; GET_TC(tc)->index  < GET_TC(tc)->size; GET_TC(tc)->index ++)
-  {
-    attrName = PyList_GET_ITEM(GET_TC(tc)->attrList, GET_TC(tc)->index);
-#if PY_MAJOR_VERSION >= 3
-    attr = PyUnicode_AsUTF8String(attrName);
-#else
-    attr = attrName;
-    Py_INCREF(attr);
-#endif
-    attrStr = PyString_AS_STRING(attr);
-
-    if (attrStr[0] == '_')
-    {
-      PRINTMARK();
-      Py_DECREF(attr);
-      continue;
-    }
-
-    itemValue = PyObject_GetAttr(obj, attrName);
-    if (itemValue == NULL)
-    {
-      PyErr_Clear();
-      Py_DECREF(attr);
-      PRINTMARK();
-      continue;
-    }
-
-    if (PyCallable_Check(itemValue))
-    {
-      Py_DECREF(itemValue);
-      Py_DECREF(attr);
-      PRINTMARK();
-      continue;
-    }
-
-    PRINTMARK();
-    itemName = attr;
-    break;
-  }
-
-  if (itemName == NULL)
-  {
-    GET_TC(tc)->index = GET_TC(tc)->size;
-    GET_TC(tc)->itemValue = NULL;
-    return 0;
-  }
-
-  GET_TC(tc)->itemName = itemName;
-  GET_TC(tc)->itemValue = itemValue;
-  GET_TC(tc)->index ++;
-
-  PRINTMARK();
-  return 1;
-}
-
-JSOBJ Dir_iterGetValue(JSOBJ obj, JSONTypeContext *tc)
-{
-  PRINTMARK();
-  return GET_TC(tc)->itemValue;
-}
-
-char *Dir_iterGetName(JSOBJ obj, JSONTypeContext *tc, size_t *outLen)
-{
-  PRINTMARK();
-  *outLen = PyString_GET_SIZE(GET_TC(tc)->itemName);
-  return PyString_AS_STRING(GET_TC(tc)->itemName);
-}
-
 
 //=============================================================================
 // List iteration functions
@@ -515,7 +349,7 @@ char *Dict_iterGetName(JSOBJ obj, JSONTypeContext *tc, size_t *outLen)
 
 void Object_beginTypeContext (JSOBJ _obj, JSONTypeContext *tc)
 {
-  PyObject *obj, *exc, *toDictFunc;
+  PyObject *obj, *exc;
   TypeContext *pc;
   PRINTMARK();
   if (!_obj) {
@@ -605,20 +439,6 @@ void Object_beginTypeContext (JSOBJ _obj, JSONTypeContext *tc)
     return;
   }
   else
-  if (PyDateTime_Check(obj))
-  {
-    PRINTMARK();
-    pc->PyTypeToJSON = PyDateTimeToINT64; tc->type = JT_LONG;
-    return;
-  }
-  else
-  if (PyDate_Check(obj))
-  {
-    PRINTMARK();
-    pc->PyTypeToJSON = PyDateToINT64; tc->type = JT_LONG;
-    return;
-  }
-  else
   if (obj == Py_None)
   {
     PRINTMARK();
@@ -677,50 +497,7 @@ ISITERABLE:
     return;
   }
 
-  toDictFunc = PyObject_GetAttrString(obj, "toDict");
-
-  if (toDictFunc)
-  {
-    PyObject* tuple = PyTuple_New(0);
-    PyObject* toDictResult = PyObject_Call(toDictFunc, tuple, NULL);
-    Py_DECREF(tuple);
-    Py_DECREF(toDictFunc);
-
-    if (toDictResult == NULL)
-    {
-      PyErr_Clear();
-      tc->type = JT_NULL;
-      return;
-    }
-
-    if (!PyDict_Check(toDictResult))
-    {
-      Py_DECREF(toDictResult);
-      tc->type = JT_NULL;
-      return;
-    }
-
-    PRINTMARK();
-    tc->type = JT_OBJECT;
-    pc->iterBegin = Dict_iterBegin;
-    pc->iterEnd = Dict_iterEnd;
-    pc->iterNext = Dict_iterNext;
-    pc->iterGetValue = Dict_iterGetValue;
-    pc->iterGetName = Dict_iterGetName;
-    pc->dictObj = toDictResult;
-    return;
-  }
-
-  PyErr_Clear();
-
-  PRINTMARK();
-  tc->type = JT_OBJECT;
-  pc->iterBegin = Dir_iterBegin;
-  pc->iterEnd = Dir_iterEnd;
-  pc->iterNext = Dir_iterNext;
-  pc->iterGetValue = Dir_iterGetValue;
-  pc->iterGetName = Dir_iterGetName;
-  return;
+  PyErr_SetString(PyExc_TypeError, "object is not JSON serializable");
 
 INVALID:
   tc->type = JT_INVALID;
