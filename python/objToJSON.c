@@ -142,19 +142,21 @@ void PyErr_InvalidDefaultPrimPyfuncResultType(const void *pyfunc, const void *re
   Py_DECREF(pyfuncRepr);
 }
 
-static void *PyIntToINT32(JSOBJ _obj, JSONTypeContext *tc, void *outValue, size_t *_outLen)
-{
-  PyObject *obj = (PyObject *) _obj;
-  *((JSINT32 *) outValue) = PyInt_AS_LONG (obj);
-  return NULL;
-}
-
+#ifdef _LP64
 static void *PyIntToINT64(JSOBJ _obj, JSONTypeContext *tc, void *outValue, size_t *_outLen)
 {
   PyObject *obj = (PyObject *) _obj;
   *((JSINT64 *) outValue) = PyInt_AS_LONG (obj);
   return NULL;
 }
+#else
+static void *PyIntToINT32(JSOBJ _obj, JSONTypeContext *tc, void *outValue, size_t *_outLen)
+{
+  PyObject *obj = (PyObject *) _obj;
+  *((JSINT32 *) outValue) = PyInt_AS_LONG (obj);
+  return NULL;
+}
+#endif
 
 static void *PyLongToINT64(JSOBJ _obj, JSONTypeContext *tc, void *outValue, size_t *_outLen)
 {
@@ -653,7 +655,7 @@ PyObject* objToJSON(PyObject* self, PyObject *args, PyObject *kwargs)
   PyObject *oinput = NULL;
   PyObject *oensureAscii = NULL;
   PyObject *oallowNan = NULL;
-  int idoublePrecision = 10; // default double precision setting
+  static const int idoublePrecision = 10; // default double precision setting
   PyObject *oencodeHTMLChars = NULL;
   PyObject *defaultPrimPyfunc = NULL;
 
